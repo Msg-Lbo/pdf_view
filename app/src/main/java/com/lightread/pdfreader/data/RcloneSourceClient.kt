@@ -97,7 +97,9 @@ class RcloneSourceClient(private val context: Context) {
         val connection = url.openConnection() as HttpURLConnection
         connection.connectTimeout = 10000
         connection.readTimeout = 15000
+        connection.instanceFollowRedirects = true
         connection.setRequestProperty("User-Agent", "QingyuePdfReader")
+        if (connection.responseCode !in 200..299) error("远端返回 HTTP ${connection.responseCode}")
         return connection.inputStream.bufferedReader().use { reader -> reader.readText() }
     }
 

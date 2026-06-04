@@ -34,8 +34,14 @@ import java.util.concurrent.Executors
 class LibraryFragment : Fragment() {
     private lateinit var status: TextView
     private lateinit var adapter: PdfFileAdapter
+    private lateinit var remotePanel: View
+    private lateinit var remoteTitle: TextView
+    private lateinit var remoteStatus: TextView
+    private lateinit var remoteAdapter: RemoteEntryAdapter
     private val mainHandler = Handler(Looper.getMainLooper())
     private val ioExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private var currentRemoteSource: RemoteSource? = null
+    private var currentRemoteUrl: String? = null
 
     private val pickPdfDocuments = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) importPickedUris(uris)
@@ -58,10 +64,32 @@ class LibraryFragment : Fragment() {
         val view = inflater.inflate(R.layout.fragment_library, container, false)
         status = view.findViewById(R.id.text_library_status)
         adapter = PdfFileAdapter { selectedCount -> updateCreateStatus(selectedCount) }
+        remoteAdapter = RemoteEntryAdapter { entry -> openRemoteEntry(entry) }
+        remotePanel = view.findViewById(R.id.panel_remote_source)
+        remoteTitle = view.findViewById(R.id.text_remote_title)
+        remoteStatus = view.findViewById(R.id.text_remote_status)
 
         view.findViewById<RecyclerView>(R.id.list_pdfs).apply {
             layoutManager = LinearLayoutManager(context)
             adapter = this@LibraryFragment.adapter
+        }
+        view.findViewById<RecyclerView>(R.id.list_remote_entries).apply {
+            layoutManager = LinearLayoutManager(context)
+            adapter = remoteAdapter
+        }
+        view.findViewById<Button>(R.id.button_remote_root).setOnClickListener {
+            currentRemoteSource?.let { source -> browseSource(source, source.baseUrl) }
+        }
+        view.findViewById<Button>(R.id.button_remote_close).setOnClickListener {
+            remotePanel.visibility = View.GONE
+            currentRemoteSource = null
+            currentRemoteUrl = null
+            remoteAdapter.submitEntries(emptyList())
+        }
+        view.findViewById<Button>(R.id.button_remote_download_current).setOnClickListener {
+            val source = currentRemoteSource ?: return@setOnClickListener
+            val url = currentRemoteUrl ?: return@setOnClickListener
+            downloadDirectory(source, url, directoryNameFromUrl(url).ifBlank { source.name })
         }
         view.findViewById<View>(R.id.button_source_settings).setOnClickListener { showSourceSettings() }
         view.findViewById<Button>(R.id.button_scan).setOnClickListener { requestScan() }
@@ -215,13 +243,23 @@ class LibraryFragment : Fragment() {
     }
 
     private fun browseSource(source: RemoteSource, url: String) {
+        currentRemoteSource = source
+        currentRemoteUrl = url
+        remotePanel.visibility = View.VISIBLE
+        remoteTitle.text = "${source.name} / ${shortPath(source, url)}"
+        remoteStatus.text = "正在读取：$url"
+        remoteAdapter.submitEntries(emptyList())
         status.text = "正在读取远端目录：${shortPath(source, url)}"
         ioExecutor.execute {
             val result = runCatching { AppGraph.rcloneClient.list(url) }
             mainHandler.post sourceList@{
                 if (!isAdded) return@sourceList
                 result.onSuccess { entries -> showRemoteEntries(source, url, entries) }
-                    .onFailure { error -> status.text = "读取源失败：${error.message ?: "未知错误"}" }
+                    .onFailure { error ->
+                        val message = "读取源失败：${error.message ?: "未知错误"}\n$url"
+                        status.text = message
+                        remoteStatus.text = message
+                    }
             }
         }
     }
@@ -229,33 +267,28 @@ class LibraryFragment : Fragment() {
     private fun showRemoteEntries(source: RemoteSource, url: String, entries: List<RemoteEntry>) {
         val visibleEntries = entries.filter { entry -> entry.directory || entry.name.endsWith(".pdf", ignoreCase = true) }
         if (visibleEntries.isEmpty()) {
-            status.text = if (entries.isEmpty()) "远端目录为空，或没有解析到目录项。" else "该目录有 ${entries.size} 个文件，但没有子目录或 PDF。"
+            val message = if (entries.isEmpty()) "远端目录为空，或没有解析到目录项：$url" else "该目录有 ${entries.size} 个文件，但没有子目录或 PDF。"
+            status.text = message
+            remoteTitle.text = "${source.name} / ${shortPath(source, url)}"
+            remoteStatus.text = message
+            remoteAdapter.submitEntries(emptyList())
             return
         }
         val directoryCount = visibleEntries.count { entry -> entry.directory }
         val pdfCount = visibleEntries.size - directoryCount
-        val labels = buildList {
-            add("下载当前目录\n递归下载此目录下的 PDF，并自动创建分组")
-            addAll(visibleEntries.map { entry -> remoteEntryLabel(entry) })
-        }.toTypedArray()
-        AlertDialog.Builder(requireContext())
-            .setTitle("${source.name} / ${shortPath(source, url)}")
-            .setMessage("当前目录包含 $directoryCount 个子目录、$pdfCount 个 PDF。点目录继续进入，点 PDF 会下载它所在目录。")
-            .setItems(labels) { _, index ->
-                if (index == 0) {
-                    downloadDirectory(source, url, directoryNameFromUrl(url).ifBlank { source.name })
-                } else {
-                    val entry = visibleEntries[index - 1]
-                    if (entry.directory) {
-                        browseSource(source, entry.url)
-                    } else {
-                        downloadDirectory(source, parentUrl(entry.url), entry.name.removeSuffix(".pdf").removeSuffix(".PDF"))
-                    }
-                }
-            }
-            .setPositiveButton("回到源根目录") { _, _ -> browseSource(source, source.baseUrl) }
-            .setNegativeButton("关闭", null)
-            .show()
+        remoteTitle.text = "${source.name} / ${shortPath(source, url)}"
+        remoteStatus.text = "当前目录：$url\n$directoryCount 个子目录，$pdfCount 个 PDF。"
+        remoteAdapter.submitEntries(visibleEntries)
+        status.text = "远端目录已打开：$directoryCount 个子目录，$pdfCount 个 PDF。"
+    }
+
+    private fun openRemoteEntry(entry: RemoteEntry) {
+        val source = currentRemoteSource ?: return
+        if (entry.directory) {
+            browseSource(source, entry.url)
+        } else {
+            downloadDirectory(source, parentUrl(entry.url), entry.name.removeSuffix(".pdf").removeSuffix(".PDF"))
+        }
     }
 
     private fun downloadDirectory(source: RemoteSource, directoryUrl: String, groupName: String) {
@@ -308,14 +341,6 @@ class LibraryFragment : Fragment() {
     private fun parentUrl(url: String): String {
         val cleanUrl = url.substringBefore('?').trimEnd('/')
         return cleanUrl.substringBeforeLast('/', missingDelimiterValue = cleanUrl) + "/"
-    }
-
-    private fun remoteEntryLabel(entry: RemoteEntry): String {
-        return if (entry.directory) {
-            "📁 ${entry.name}\n进入目录，继续浏览或下载该目录"
-        } else {
-            "📄 ${entry.name}\n下载它所在目录并自动分组"
-        }
     }
 
     private fun shortPath(source: RemoteSource, url: String): String {
