@@ -9,17 +9,8 @@ import java.net.URL
 class UpdateChecker(private val context: Context) {
     fun checkLatest(): UpdateResult {
         return try {
-            val json = URL(RELEASE_API_URL).openConnection().let { connection ->
-                (connection as HttpURLConnection).run {
-                    connectTimeout = 8000
-                    readTimeout = 8000
-                    requestMethod = "GET"
-                    setRequestProperty("Accept", "application/vnd.github+json")
-                    setRequestProperty("User-Agent", "QingyuePdfReader")
-                    inputStream.bufferedReader().use { reader -> reader.readText() }
-                }
-            }
-            val release = parseRelease(json)
+            val release = runCatching { parseManifest(openText(UPDATE_MANIFEST_URL)) }
+                .getOrElse { parseRelease(openText(RELEASE_API_URL)) }
             val currentVersion = currentVersionName()
             if (isNewerVersion(release.versionName, currentVersion)) {
                 UpdateResult.UpdateAvailable(release.copy(currentVersionName = currentVersion))
@@ -29,6 +20,21 @@ class UpdateChecker(private val context: Context) {
         } catch (error: Exception) {
             UpdateResult.Error(error.message ?: "检查更新失败")
         }
+    }
+
+    private fun parseManifest(json: String): UpdateInfo {
+        val root = JSONObject(json)
+        val versionName = root.getString("versionName")
+        val tagName = root.optString("tagName", "v$versionName")
+        val releaseUrl = root.optString("releaseUrl")
+        return UpdateInfo(
+            tagName = tagName,
+            versionName = versionName,
+            currentVersionName = currentVersionName(),
+            releaseUrl = releaseUrl,
+            apkUrl = root.getString("apkUrl"),
+            body = root.optString("body")
+        )
     }
 
     private fun parseRelease(json: String): UpdateInfo {
@@ -58,6 +64,21 @@ class UpdateChecker(private val context: Context) {
         )
     }
 
+    private fun openText(url: String): String {
+        return URL(url).openConnection().let { connection ->
+            (connection as HttpURLConnection).run {
+                connectTimeout = 8000
+                readTimeout = 8000
+                requestMethod = "GET"
+                setRequestProperty("Accept", "application/vnd.github+json")
+                setRequestProperty("Cache-Control", "no-cache")
+                setRequestProperty("User-Agent", "QingyuePdfReader")
+                if (responseCode !in 200..299) error("更新服务返回 HTTP $responseCode")
+                inputStream.bufferedReader().use { reader -> reader.readText() }
+            }
+        }
+    }
+
     @Suppress("DEPRECATION")
     private fun currentVersionName(): String {
         return context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "0.0.0"
@@ -83,6 +104,7 @@ class UpdateChecker(private val context: Context) {
     }
 
     companion object {
+        const val UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Msg-Lbo/pdf_view/main/app-update.json"
         const val RELEASE_API_URL = "https://api.github.com/repos/Msg-Lbo/pdf_view/releases/latest"
 
         fun uriForDownload(updateInfo: UpdateInfo): Uri {

@@ -1,6 +1,7 @@
 package com.lightread.pdfreader
 
 import android.app.AlertDialog
+import android.app.ProgressDialog
 import android.content.Intent
 import android.graphics.Typeface
 import android.os.Bundle
@@ -100,12 +101,57 @@ class MainActivity : FragmentActivity() {
     private fun showUpdateDialog(updateInfo: UpdateInfo) {
         AlertDialog.Builder(this)
             .setTitle("发现新版本 ${updateInfo.tagName}")
-            .setMessage("当前版本：${updateInfo.currentVersionName}\n最新版本：${updateInfo.versionName}\n\n是否打开下载页面？")
+            .setMessage("当前版本：${updateInfo.currentVersionName}\n最新版本：${updateInfo.versionName}\n\n点击更新后会自动下载 APK，并打开系统安装确认页。安装完成后重新打开轻阅即可使用新版本。")
             .setNegativeButton("稍后", null)
-            .setPositiveButton("下载") { _, _ ->
-                startActivity(Intent(Intent.ACTION_VIEW, UpdateChecker.uriForDownload(updateInfo)))
-            }
+            .setNeutralButton("打开网页") { _, _ -> startActivity(Intent(Intent.ACTION_VIEW, UpdateChecker.uriForDownload(updateInfo))) }
+            .setPositiveButton("下载并安装") { _, _ -> downloadAndInstall(updateInfo) }
             .show()
+    }
+
+    private fun downloadAndInstall(updateInfo: UpdateInfo) {
+        val progressDialog = ProgressDialog(this).apply {
+            setTitle("正在下载更新")
+            setMessage("准备下载 ${updateInfo.tagName}")
+            setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
+            isIndeterminate = true
+            setCancelable(false)
+            show()
+        }
+        updateExecutor.execute {
+            val result = runCatching {
+                AppGraph.updateInstaller.downloadApk(updateInfo) { progress ->
+                    mainHandler.post {
+                        val total = progress.totalBytes
+                        progressDialog.isIndeterminate = total <= 0L
+                        if (total > 0L) {
+                            progressDialog.max = 100
+                            progressDialog.progress = ((progress.downloadedBytes * 100L) / total).toInt().coerceIn(0, 100)
+                            progressDialog.setMessage("已下载 ${formatBytes(progress.downloadedBytes)} / ${formatBytes(total)}")
+                        } else {
+                            progressDialog.setMessage("已下载 ${formatBytes(progress.downloadedBytes)}")
+                        }
+                    }
+                }
+            }
+            mainHandler.post {
+                progressDialog.dismiss()
+                result.onSuccess { apkFile -> startActivity(AppGraph.updateInstaller.installApk(apkFile)) }
+                    .onFailure { error ->
+                        AlertDialog.Builder(this)
+                            .setTitle("更新下载失败")
+                            .setMessage(error.message ?: "未知错误")
+                            .setPositiveButton("打开网页下载") { _, _ -> startActivity(Intent(Intent.ACTION_VIEW, UpdateChecker.uriForDownload(updateInfo))) }
+                            .setNegativeButton("关闭", null)
+                            .show()
+                    }
+            }
+        }
+    }
+
+    private fun formatBytes(bytes: Long): String {
+        if (bytes < 1024L) return "$bytes B"
+        val mib = bytes / 1024.0 / 1024.0
+        return "%.1f MB".format(mib)
     }
 
     private fun applySystemBarInsets() {

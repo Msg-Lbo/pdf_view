@@ -1,0 +1,8 @@
+{
+  "versionName": "0.2.2",
+  "versionCode": 6,
+  "tagName": "v0.2.2",
+  "apkUrl": "https://github.com/Msg-Lbo/pdf_view/releases/download/v0.2.2/qingyue-v0.2.2.apk",
+  "releaseUrl": "https://github.com/Msg-Lbo/pdf_view/releases/tag/v0.2.2",
+  "body": "优化应用内更新：优先读取更新清单，自动下载 APK 并打开系统安装确认页。"
+}
