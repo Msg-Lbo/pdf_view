@@ -6,6 +6,7 @@ import com.lightread.pdfreader.data.model.PdfFile
 import com.lightread.pdfreader.data.model.PdfGroup
 import com.lightread.pdfreader.data.model.PdfGroupWithFiles
 import com.lightread.pdfreader.data.model.ReadingProgress
+import com.lightread.pdfreader.data.model.RemoteSource
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -15,6 +16,7 @@ class PdfLibraryStore(private val context: Context) {
     private val groups = linkedMapOf<String, PdfGroup>()
     private val refs = mutableListOf<GroupPdfCrossRef>()
     private val progressByGroup = linkedMapOf<String, ReadingProgress>()
+    private val sources = linkedMapOf<String, RemoteSource>()
     private val storeFileName = "library_store.json"
 
     init {
@@ -64,6 +66,61 @@ class PdfLibraryStore(private val context: Context) {
         }
         save()
         return group
+    }
+
+    @Synchronized
+    fun createGroupFromPdfFiles(title: String, files: List<PdfFile>): PdfGroup? {
+        if (files.isEmpty()) return null
+        upsertPdfFiles(files)
+        val cleanTitle = title.trim().ifBlank { files.first().fileName.removeSuffix(".pdf").removeSuffix(".PDF") }
+        val now = System.currentTimeMillis()
+        val groupId = UUID.randomUUID().toString()
+        val group = PdfGroup(
+            groupId = groupId,
+            title = cleanTitle,
+            coverPath = null,
+            createdTime = now
+        )
+        groups[groupId] = group
+        files.sortedNaturally().forEachIndexed { index, file ->
+            refs += GroupPdfCrossRef(
+                crossId = now + index,
+                groupId = groupId,
+                pdfId = file.id,
+                sortOrder = index
+            )
+        }
+        save()
+        return group
+    }
+
+    @Synchronized
+    fun getSources(): List<RemoteSource> {
+        return sources.values.sortedBy { source -> source.createdTime }
+    }
+
+    @Synchronized
+    fun addSource(name: String, baseUrl: String): RemoteSource? {
+        val cleanUrl = baseUrl.trim().ifBlank { return null }.let { url -> if (url.endsWith('/')) url else "$url/" }
+        val cleanName = name.trim().ifBlank { cleanUrl.removePrefix("https://").removePrefix("http://").trimEnd('/') }
+        val existing = sources.values.firstOrNull { source -> source.baseUrl == cleanUrl }
+        if (existing != null) return existing
+        val source = RemoteSource(
+            id = UUID.randomUUID().toString(),
+            name = cleanName,
+            baseUrl = cleanUrl,
+            createdTime = System.currentTimeMillis()
+        )
+        sources[source.id] = source
+        save()
+        return source
+    }
+
+    @Synchronized
+    fun deleteSource(sourceId: String): Boolean {
+        sources.remove(sourceId) ?: return false
+        save()
+        return true
     }
 
     @Synchronized
@@ -181,6 +238,15 @@ class PdfLibraryStore(private val context: Context) {
                 )
                 progressByGroup[progress.groupId] = progress
             }
+            root.optJSONArray("sources")?.forEachObject { objectJson ->
+                val source = RemoteSource(
+                    id = objectJson.getString("id"),
+                    name = objectJson.getString("name"),
+                    baseUrl = objectJson.getString("baseUrl"),
+                    createdTime = objectJson.optLong("createdTime", 0L)
+                )
+                sources[source.id] = source
+            }
         }
     }
 
@@ -190,6 +256,7 @@ class PdfLibraryStore(private val context: Context) {
             .put("groups", JSONArray().also { array -> groups.values.forEach { array.put(it.toJson()) } })
             .put("refs", JSONArray().also { array -> refs.forEach { array.put(it.toJson()) } })
             .put("progress", JSONArray().also { array -> progressByGroup.values.forEach { array.put(it.toJson()) } })
+            .put("sources", JSONArray().also { array -> sources.values.forEach { array.put(it.toJson()) } })
         context.openFileOutput(storeFileName, Context.MODE_PRIVATE).bufferedWriter().use { writer ->
             writer.write(root.toString())
         }
@@ -228,6 +295,14 @@ class PdfLibraryStore(private val context: Context) {
             .put("currentPage", currentPage)
             .put("pageScrollOffset", pageScrollOffset)
             .put("updateTime", updateTime)
+    }
+
+    private fun RemoteSource.toJson(): JSONObject {
+        return JSONObject()
+            .put("id", id)
+            .put("name", name)
+            .put("baseUrl", baseUrl)
+            .put("createdTime", createdTime)
     }
 
     private inline fun JSONArray.forEachObject(block: (JSONObject) -> Unit) {

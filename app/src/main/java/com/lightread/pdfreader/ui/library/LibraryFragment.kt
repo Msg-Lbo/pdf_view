@@ -1,6 +1,7 @@
 package com.lightread.pdfreader.ui.library
 
 import android.Manifest
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -14,6 +15,8 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
@@ -21,6 +24,8 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.lightread.pdfreader.AppGraph
 import com.lightread.pdfreader.R
+import com.lightread.pdfreader.data.model.RemoteEntry
+import com.lightread.pdfreader.data.model.RemoteSource
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -56,6 +61,7 @@ class LibraryFragment : Fragment() {
             layoutManager = LinearLayoutManager(context)
             adapter = this@LibraryFragment.adapter
         }
+        view.findViewById<View>(R.id.button_source_settings).setOnClickListener { showSourceSettings() }
         view.findViewById<Button>(R.id.button_scan).setOnClickListener { requestScan() }
         view.findViewById<Button>(R.id.button_pick).setOnClickListener { pickPdfDocuments.launch(arrayOf("application/pdf")) }
         view.findViewById<Button>(R.id.button_create_group).setOnClickListener { createGroup() }
@@ -138,5 +144,136 @@ class LibraryFragment : Fragment() {
 
     private fun updateCreateStatus(selectedCount: Int) {
         if (selectedCount > 0) status.text = "已选择 $selectedCount 个 PDF，可创建分组。"
+    }
+
+    private fun showSourceSettings() {
+        val sources = AppGraph.store.getSources()
+        val labels = buildList {
+            add("添加源")
+            addAll(sources.map { source -> source.name })
+        }.toTypedArray()
+        AlertDialog.Builder(requireContext())
+            .setTitle("源设置")
+            .setItems(labels) { _, index ->
+                if (index == 0) showAddSourceDialog() else showSourceActions(sources[index - 1])
+            }
+            .setNegativeButton("关闭", null)
+            .show()
+    }
+
+    private fun showAddSourceDialog() {
+        val density = resources.displayMetrics.density
+        val nameInput = EditText(requireContext()).apply {
+            hint = "名称"
+            setSingleLine(true)
+            setText("rclone")
+        }
+        val urlInput = EditText(requireContext()).apply {
+            hint = "源地址"
+            setSingleLine(true)
+            setText(DEFAULT_RCLONE_SOURCE)
+        }
+        val content = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding((20 * density).toInt(), 0, (20 * density).toInt(), 0)
+            addView(nameInput)
+            addView(urlInput)
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle("添加源")
+            .setView(content)
+            .setNegativeButton("取消", null)
+            .setPositiveButton("保存") { _, _ ->
+                val source = AppGraph.store.addSource(nameInput.text.toString(), urlInput.text.toString())
+                status.text = if (source == null) "源地址不能为空。" else "已添加源：${source.name}"
+            }
+            .show()
+    }
+
+    private fun showSourceActions(source: RemoteSource) {
+        AlertDialog.Builder(requireContext())
+            .setTitle(source.name)
+            .setItems(arrayOf("浏览目录", "删除源")) { _, index ->
+                when (index) {
+                    0 -> browseSource(source, source.baseUrl)
+                    1 -> {
+                        AppGraph.store.deleteSource(source.id)
+                        status.text = "已删除源：${source.name}"
+                    }
+                }
+            }
+            .setNegativeButton("关闭", null)
+            .show()
+    }
+
+    private fun browseSource(source: RemoteSource, url: String) {
+        status.text = "正在读取远端目录..."
+        ioExecutor.execute {
+            val result = runCatching { AppGraph.rcloneClient.list(url) }
+            mainHandler.post sourceList@{
+                if (!isAdded) return@sourceList
+                result.onSuccess { entries -> showRemoteEntries(source, url, entries) }
+                    .onFailure { error -> status.text = "读取源失败：${error.message ?: "未知错误"}" }
+            }
+        }
+    }
+
+    private fun showRemoteEntries(source: RemoteSource, url: String, entries: List<RemoteEntry>) {
+        val visibleEntries = entries.filter { entry -> entry.directory || entry.name.endsWith(".pdf", ignoreCase = true) }
+        if (visibleEntries.isEmpty()) {
+            status.text = "该目录没有可浏览目录或 PDF。"
+            return
+        }
+        val labels = buildList {
+            add("下载当前目录 PDF 并自动分组")
+            addAll(visibleEntries.map { entry -> if (entry.directory) "[目录] ${entry.name}" else "[PDF] ${entry.name}" })
+        }.toTypedArray()
+        AlertDialog.Builder(requireContext())
+            .setTitle(source.name)
+            .setItems(labels) { _, index ->
+                if (index == 0) {
+                    downloadDirectory(source, url, directoryNameFromUrl(url).ifBlank { source.name })
+                } else {
+                    val entry = visibleEntries[index - 1]
+                    if (entry.directory) {
+                        browseSource(source, entry.url)
+                    } else {
+                        downloadDirectory(source, parentUrl(entry.url), entry.name.removeSuffix(".pdf").removeSuffix(".PDF"))
+                    }
+                }
+            }
+            .setNegativeButton("关闭", null)
+            .show()
+    }
+
+    private fun downloadDirectory(source: RemoteSource, directoryUrl: String, groupName: String) {
+        status.text = "正在下载并分组：$groupName"
+        ioExecutor.execute {
+            val result = runCatching { AppGraph.rcloneClient.downloadDirectory(source.baseUrl, directoryUrl, groupName) }
+            mainHandler.post sourceDownload@{
+                if (!isAdded) return@sourceDownload
+                result.onSuccess { download ->
+                    val group = AppGraph.store.createGroupFromPdfFiles(download.groupName, download.files)
+                    refresh(
+                        if (group == null) "未下载到 PDF。" else "已下载 ${download.files.size} 个 PDF，并创建分组：${group.title}"
+                    )
+                }.onFailure { error ->
+                    status.text = "下载失败：${error.message ?: "未知错误"}"
+                }
+            }
+        }
+    }
+
+    private fun directoryNameFromUrl(url: String): String {
+        return Uri.parse(url).lastPathSegment.orEmpty()
+    }
+
+    private fun parentUrl(url: String): String {
+        val cleanUrl = url.substringBefore('?').trimEnd('/')
+        return cleanUrl.substringBeforeLast('/', missingDelimiterValue = cleanUrl) + "/"
+    }
+
+    private companion object {
+        const val DEFAULT_RCLONE_SOURCE = "https://rclone.ytb.icu/"
     }
 }

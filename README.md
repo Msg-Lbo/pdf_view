@@ -10,6 +10,7 @@
 - 连续阅读：阅读器将分组内多个 PDF 串成一个竖向连续页面流。
 - 阅读进度：按分组保存当前 PDF、页码和页内滚动位置，重新打开后继续阅读。
 - 目录跳转：阅读器内可打开目录，直接跳转到分组内任意 PDF。
+- 远端源下载：文件库右上角可添加 rclone HTTP 源，浏览远端目录并下载 PDF，下载后按远端目录自动创建分组。
 - 在线更新：启动时和关于页可检查 GitHub Releases，新版本可直接打开 APK 下载链接。
 
 ## 页面结构
@@ -25,6 +26,7 @@
 - `PdfRenderer` 渲染 PDF 页面。
 - RecyclerView 承载连续阅读页面流。
 - 本地 JSON 文件保存文件库、分组和阅读进度。
+- 通过解析 rclone `serve http` 目录 HTML 模板读取远端目录，不依赖服务端 JSON API。
 - `HttpURLConnection` 检查 GitHub Releases，不依赖 Retrofit/OkHttp。
 
 ## 构建
