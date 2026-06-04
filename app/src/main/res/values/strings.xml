@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">轻阅</string>
+    <string name="tab_library">文件库</string>
+    <string name="tab_groups">分组</string>
+    <string name="scan_local_pdf">扫描本地 PDF</string>
+    <string name="pick_pdf">选择 PDF</string>
+    <string name="create_group">用已选 PDF 创建分组</string>
+    <string name="empty_library">尚未导入 PDF。可扫描本地文件，或用系统文件选择器添加。</string>
+    <string name="empty_groups">还没有分组。请先在文件库选择 PDF 创建分组。</string>
+    <string name="pdf_page">PDF 页面</string>
+</resources>
