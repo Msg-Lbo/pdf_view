@@ -35,9 +35,20 @@ class RcloneSourceClient(private val context: Context) {
             .toList()
     }
 
-    fun downloadDirectory(sourceUrl: String, directoryUrl: String, groupName: String): DownloadResult {
+    fun downloadDirectory(
+        sourceUrl: String,
+        directoryUrl: String,
+        groupName: String,
+        onProgress: (DownloadProgress) -> Unit = {}
+    ): DownloadResult {
         val pdfEntries = collectPdfEntries(directoryUrl.ensureSlash(), depth = 0)
-        val files = pdfEntries.mapNotNull { entry -> downloadPdf(sourceUrl, groupName, entry) }
+        onProgress(DownloadProgress(totalFiles = pdfEntries.size, completedFiles = 0, currentFileName = null))
+        val files = pdfEntries.mapIndexedNotNull { index, entry ->
+            onProgress(DownloadProgress(pdfEntries.size, index, entry.name))
+            downloadPdf(sourceUrl, groupName, entry).also {
+                onProgress(DownloadProgress(pdfEntries.size, index + 1, entry.name))
+            }
+        }
         return DownloadResult(groupName = groupName, files = files)
     }
 
@@ -134,4 +145,10 @@ class RcloneSourceClient(private val context: Context) {
 data class DownloadResult(
     val groupName: String,
     val files: List<PdfFile>
+)
+
+data class DownloadProgress(
+    val totalFiles: Int,
+    val completedFiles: Int,
+    val currentFileName: String?
 )

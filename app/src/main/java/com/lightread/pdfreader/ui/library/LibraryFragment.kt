@@ -2,6 +2,7 @@ package com.lightread.pdfreader.ui.library
 
 import android.Manifest
 import android.app.AlertDialog
+import android.app.ProgressDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -26,6 +27,7 @@ import com.lightread.pdfreader.AppGraph
 import com.lightread.pdfreader.R
 import com.lightread.pdfreader.data.model.RemoteEntry
 import com.lightread.pdfreader.data.model.RemoteSource
+import java.net.URLDecoder
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -149,8 +151,8 @@ class LibraryFragment : Fragment() {
     private fun showSourceSettings() {
         val sources = AppGraph.store.getSources()
         val labels = buildList {
-            add("添加源")
-            addAll(sources.map { source -> source.name })
+            add("＋ 添加远端源")
+            addAll(sources.map { source -> "${source.name}\n${source.baseUrl}" })
         }.toTypedArray()
         AlertDialog.Builder(requireContext())
             .setTitle("源设置")
@@ -193,7 +195,8 @@ class LibraryFragment : Fragment() {
     private fun showSourceActions(source: RemoteSource) {
         AlertDialog.Builder(requireContext())
             .setTitle(source.name)
-            .setItems(arrayOf("浏览目录", "删除源")) { _, index ->
+            .setMessage(source.baseUrl)
+            .setItems(arrayOf("浏览远端目录", "删除这个源")) { _, index ->
                 when (index) {
                     0 -> browseSource(source, source.baseUrl)
                     1 -> {
@@ -207,7 +210,7 @@ class LibraryFragment : Fragment() {
     }
 
     private fun browseSource(source: RemoteSource, url: String) {
-        status.text = "正在读取远端目录..."
+        status.text = "正在读取远端目录：${shortPath(source, url)}"
         ioExecutor.execute {
             val result = runCatching { AppGraph.rcloneClient.list(url) }
             mainHandler.post sourceList@{
@@ -224,12 +227,15 @@ class LibraryFragment : Fragment() {
             status.text = "该目录没有可浏览目录或 PDF。"
             return
         }
+        val directoryCount = visibleEntries.count { entry -> entry.directory }
+        val pdfCount = visibleEntries.size - directoryCount
         val labels = buildList {
-            add("下载当前目录 PDF 并自动分组")
-            addAll(visibleEntries.map { entry -> if (entry.directory) "[目录] ${entry.name}" else "[PDF] ${entry.name}" })
+            add("下载当前目录\n递归下载此目录下的 PDF，并自动创建分组")
+            addAll(visibleEntries.map { entry -> remoteEntryLabel(entry) })
         }.toTypedArray()
         AlertDialog.Builder(requireContext())
-            .setTitle(source.name)
+            .setTitle("${source.name} / ${shortPath(source, url)}")
+            .setMessage("当前目录包含 $directoryCount 个子目录、$pdfCount 个 PDF。点目录继续进入，点 PDF 会下载它所在目录。")
             .setItems(labels) { _, index ->
                 if (index == 0) {
                     downloadDirectory(source, url, directoryNameFromUrl(url).ifBlank { source.name })
@@ -242,16 +248,42 @@ class LibraryFragment : Fragment() {
                     }
                 }
             }
+            .setPositiveButton("回到源根目录") { _, _ -> browseSource(source, source.baseUrl) }
             .setNegativeButton("关闭", null)
             .show()
     }
 
     private fun downloadDirectory(source: RemoteSource, directoryUrl: String, groupName: String) {
+        val progressDialog = ProgressDialog(requireContext()).apply {
+            setTitle("正在下载 PDF")
+            setMessage("准备下载：$groupName")
+            setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
+            isIndeterminate = true
+            setCancelable(false)
+            setButton(AlertDialog.BUTTON_NEGATIVE, "后台等待") { dialog, _ -> dialog.dismiss() }
+            show()
+        }
         status.text = "正在下载并分组：$groupName"
         ioExecutor.execute {
-            val result = runCatching { AppGraph.rcloneClient.downloadDirectory(source.baseUrl, directoryUrl, groupName) }
+            val result = runCatching {
+                AppGraph.rcloneClient.downloadDirectory(source.baseUrl, directoryUrl, groupName) { progress ->
+                    mainHandler.post progressUpdate@{
+                        if (!isAdded) return@progressUpdate
+                        val total = progress.totalFiles
+                        progressDialog.isIndeterminate = total <= 0
+                        if (total > 0) {
+                            progressDialog.max = total
+                            progressDialog.progress = progress.completedFiles.coerceAtMost(total)
+                        }
+                        val current = progress.currentFileName?.let { "\n当前：$it" }.orEmpty()
+                        progressDialog.setMessage("${progress.completedFiles}/$total 个 PDF$current")
+                        status.text = "正在下载 $groupName：${progress.completedFiles}/$total"
+                    }
+                }
+            }
             mainHandler.post sourceDownload@{
                 if (!isAdded) return@sourceDownload
+                progressDialog.dismiss()
                 result.onSuccess { download ->
                     val group = AppGraph.store.createGroupFromPdfFiles(download.groupName, download.files)
                     refresh(
@@ -271,6 +303,24 @@ class LibraryFragment : Fragment() {
     private fun parentUrl(url: String): String {
         val cleanUrl = url.substringBefore('?').trimEnd('/')
         return cleanUrl.substringBeforeLast('/', missingDelimiterValue = cleanUrl) + "/"
+    }
+
+    private fun remoteEntryLabel(entry: RemoteEntry): String {
+        return if (entry.directory) {
+            "📁 ${entry.name}\n进入目录，继续浏览或下载该目录"
+        } else {
+            "📄 ${entry.name}\n下载它所在目录并自动分组"
+        }
+    }
+
+    private fun shortPath(source: RemoteSource, url: String): String {
+        val sourcePath = Uri.parse(source.baseUrl).path.orEmpty().trimEnd('/')
+        val path = Uri.parse(url).path.orEmpty().removePrefix(sourcePath).trim('/')
+        return decodePath(path).ifBlank { "根目录" }
+    }
+
+    private fun decodePath(value: String): String {
+        return runCatching { URLDecoder.decode(value, "UTF-8") }.getOrElse { value }
     }
 
     private companion object {
