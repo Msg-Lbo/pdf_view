@@ -187,7 +187,12 @@ class LibraryFragment : Fragment() {
             .setNegativeButton("取消", null)
             .setPositiveButton("保存") { _, _ ->
                 val source = AppGraph.store.addSource(nameInput.text.toString(), urlInput.text.toString())
-                status.text = if (source == null) "源地址不能为空。" else "已添加源：${source.name}"
+                if (source == null) {
+                    status.text = "源地址不能为空。"
+                } else {
+                    status.text = "已添加源：${source.name}，正在打开目录..."
+                    browseSource(source, source.baseUrl)
+                }
             }
             .show()
     }
@@ -224,7 +229,7 @@ class LibraryFragment : Fragment() {
     private fun showRemoteEntries(source: RemoteSource, url: String, entries: List<RemoteEntry>) {
         val visibleEntries = entries.filter { entry -> entry.directory || entry.name.endsWith(".pdf", ignoreCase = true) }
         if (visibleEntries.isEmpty()) {
-            status.text = "该目录没有可浏览目录或 PDF。"
+            status.text = if (entries.isEmpty()) "远端目录为空，或没有解析到目录项。" else "该目录有 ${entries.size} 个文件，但没有子目录或 PDF。"
             return
         }
         val directoryCount = visibleEntries.count { entry -> entry.directory }

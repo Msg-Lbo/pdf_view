@@ -19,7 +19,7 @@ class RcloneSourceClient(private val context: Context) {
         return LINK_REGEX.findAll(html)
             .mapNotNull { match ->
                 val href = match.groupValues[1]
-                if (href == ".." || href.startsWith("?") || href.startsWith("#")) return@mapNotNull null
+                if (href.isNavigationLink()) return@mapNotNull null
                 val resolved = URL(baseUrl, href).toString()
                 val pathName = href.substringBefore('?').trimEnd('/').substringAfterLast('/')
                 val name = decodeName(pathName).ifBlank { decodeName(href.trimEnd('/')) }
@@ -45,9 +45,14 @@ class RcloneSourceClient(private val context: Context) {
         onProgress(DownloadProgress(totalFiles = pdfEntries.size, completedFiles = 0, currentFileName = null))
         val files = pdfEntries.mapIndexedNotNull { index, entry ->
             onProgress(DownloadProgress(pdfEntries.size, index, entry.name))
-            downloadPdf(sourceUrl, groupName, entry).also {
-                onProgress(DownloadProgress(pdfEntries.size, index + 1, entry.name))
-            }
+            runCatching { downloadPdf(sourceUrl, groupName, entry) }
+                .getOrNull()
+                .also {
+                    onProgress(DownloadProgress(pdfEntries.size, index + 1, entry.name))
+                }
+        }
+        if (pdfEntries.isNotEmpty() && files.isEmpty()) {
+            error("找到 ${pdfEntries.size} 个 PDF，但下载失败。请检查网络或远端源是否允许直连文件。")
         }
         return DownloadResult(groupName = groupName, files = files)
     }
@@ -64,27 +69,28 @@ class RcloneSourceClient(private val context: Context) {
     }
 
     private fun downloadPdf(sourceUrl: String, groupName: String, entry: RemoteEntry): PdfFile? {
-        return try {
-            val targetDir = File(context.getExternalFilesDir(null), "RemotePdfs/${safeFileName(groupName)}").apply { mkdirs() }
-            val targetFile = uniqueFile(targetDir, safeFileName(entry.name).ifBlank { "remote.pdf" })
-            val connection = URL(entry.url).openConnection() as HttpURLConnection
-            connection.connectTimeout = 12000
-            connection.readTimeout = 30000
-            connection.setRequestProperty("User-Agent", "QingyuePdfReader")
-            connection.inputStream.use { input ->
-                targetFile.outputStream().use { output -> input.copyTo(output) }
-            }
-            PdfFile(
-                id = stableId("$sourceUrl|${entry.url}", targetFile.length()),
-                fileName = targetFile.name,
-                filePath = Uri.fromFile(targetFile).toString(),
-                pageCount = readPageCount(targetFile),
-                addedTime = System.currentTimeMillis() / 1000L,
-                sizeBytes = targetFile.length()
-            )
-        } catch (_: Exception) {
-            null
+        val targetDir = File(context.getExternalFilesDir(null), "RemotePdfs/${safeFileName(groupName)}").apply { mkdirs() }
+        val targetFile = uniqueFile(targetDir, safeFileName(entry.name).ifBlank { "remote.pdf" })
+        val connection = URL(entry.url).openConnection() as HttpURLConnection
+        connection.connectTimeout = 12000
+        connection.readTimeout = 30000
+        connection.instanceFollowRedirects = true
+        connection.setRequestProperty("User-Agent", "QingyuePdfReader")
+        if (connection.responseCode !in 200..299) {
+            targetFile.delete()
+            error("下载失败：HTTP ${connection.responseCode}")
         }
+        connection.inputStream.use { input ->
+            targetFile.outputStream().use { output -> input.copyTo(output) }
+        }
+        return PdfFile(
+            id = stableId("$sourceUrl|${entry.url}", targetFile.length()),
+            fileName = targetFile.name,
+            filePath = Uri.fromFile(targetFile).toString(),
+            pageCount = readPageCount(targetFile),
+            addedTime = System.currentTimeMillis() / 1000L,
+            sizeBytes = targetFile.length()
+        )
     }
 
     private fun openText(url: URL): String {
@@ -135,6 +141,13 @@ class RcloneSourceClient(private val context: Context) {
     }
 
     private fun String.ensureSlash(): String = if (endsWith('/')) this else "$this/"
+
+    private fun String.isNavigationLink(): Boolean {
+        val clean = trim()
+        return clean.isBlank() || clean == "." || clean == ".." || clean.startsWith("?") || clean.startsWith("#") ||
+            clean.contains("download=zip", ignoreCase = true) || clean.contains("sort=", ignoreCase = true) ||
+            clean.startsWith("javascript:", ignoreCase = true)
+    }
 
     companion object {
         private const val MAX_RECURSION_DEPTH = 3
