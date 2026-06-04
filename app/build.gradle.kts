@@ -7,6 +7,7 @@ val releaseKeystoreFile = file("release.keystore")
 val hasReleaseSigning = releaseKeystoreFile.exists() &&
     !providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull.isNullOrBlank() &&
     !providers.environmentVariable("ANDROID_KEY_ALIAS").orNull.isNullOrBlank()
+val fallbackKeystoreFile = file("fallback-release.keystore")
 
 android {
     namespace = "com.lightread.pdfreader"
@@ -43,6 +44,12 @@ android {
                     ?: providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull
             }
         }
+        create("fallbackRelease") {
+            storeFile = fallbackKeystoreFile
+            storePassword = "android"
+            keyAlias = "fallback"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
@@ -56,7 +63,7 @@ android {
             signingConfig = if (hasReleaseSigning) {
                 signingConfigs.getByName("release")
             } else {
-                signingConfigs.getByName("debug")
+                signingConfigs.getByName("fallbackRelease")
             }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

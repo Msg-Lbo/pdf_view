@@ -40,3 +40,4 @@
 - 推送 `v*` 格式的 tag 会触发 GitHub Actions。
 - 工作流会执行 `:app:assembleRelease`，创建 GitHub Release，并上传 `qingyue-<tag>.apk` 与 SHA-256 校验文件。
 - 可选正式签名密钥：`ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。
+- 未配置正式签名密钥时，使用仓库内固定的公开 fallback 签名，保证 GitHub Release APK 可覆盖升级。

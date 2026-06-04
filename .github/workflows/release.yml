@@ -63,8 +63,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: release-assets/*
+          overwrite_files: true
           generate_release_notes: true
           body: |
             Android APK for ${{ github.ref_name }}.
 
-            If repository signing secrets are not configured, this APK is signed with the default debug key so it can still be installed for testing.
+            If repository signing secrets are not configured, this APK is signed with the repository fallback key so upgrades keep the same signature.
