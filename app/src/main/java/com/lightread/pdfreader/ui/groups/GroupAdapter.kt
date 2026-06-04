@@ -3,6 +3,7 @@ package com.lightread.pdfreader.ui.groups
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.lightread.pdfreader.R
@@ -12,7 +13,9 @@ import java.util.Date
 import java.util.Locale
 
 class GroupAdapter(
-    private val onOpenGroup: (String) -> Unit
+    private val onOpenGroup: (String) -> Unit,
+    private val onEditGroup: (PdfGroupWithFiles) -> Unit,
+    private val onDeleteGroup: (PdfGroupWithFiles) -> Unit
 ) : RecyclerView.Adapter<GroupAdapter.GroupViewHolder>() {
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
     private var groups: List<PdfGroupWithFiles> = emptyList()
@@ -41,10 +44,14 @@ class GroupAdapter(
             }
         }
         holder.itemView.setOnClickListener { onOpenGroup(group.groupId) }
+        holder.editButton.setOnClickListener { onEditGroup(groupWithFiles) }
+        holder.deleteButton.setOnClickListener { onDeleteGroup(groupWithFiles) }
     }
 
     class GroupViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val title: TextView = view.findViewById(R.id.text_group_title)
         val meta: TextView = view.findViewById(R.id.text_group_meta)
+        val editButton: Button = view.findViewById(R.id.button_edit_group)
+        val deleteButton: Button = view.findViewById(R.id.button_delete_group)
     }
 }

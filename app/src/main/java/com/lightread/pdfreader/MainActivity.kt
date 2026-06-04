@@ -2,7 +2,10 @@ package com.lightread.pdfreader
 
 import android.graphics.Typeface
 import android.os.Bundle
+import android.view.View
 import android.widget.TextView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import com.lightread.pdfreader.ui.groups.GroupsFragment
@@ -18,6 +21,7 @@ class MainActivity : FragmentActivity() {
         AppGraph.init(applicationContext)
         currentTab = savedInstanceState?.getString(KEY_TAB)?.let(Tab::valueOf) ?: Tab.Library
         setContentView(R.layout.activity_main)
+        applySystemBarInsets()
 
         libraryTab = findViewById(R.id.tab_library)
         groupsTab = findViewById(R.id.tab_groups)
@@ -54,6 +58,15 @@ class MainActivity : FragmentActivity() {
         groupsTab.setTextColor(if (selectedTab == Tab.Groups) 0xFF111111.toInt() else 0xFF777777.toInt())
         libraryTab.setTypeface(null, if (selectedTab == Tab.Library) Typeface.BOLD else Typeface.NORMAL)
         groupsTab.setTypeface(null, if (selectedTab == Tab.Groups) Typeface.BOLD else Typeface.NORMAL)
+    }
+
+    private fun applySystemBarInsets() {
+        val root = findViewById<View>(R.id.root_main)
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(0, bars.top, 0, 0)
+            insets
+        }
     }
 
     private enum class Tab {

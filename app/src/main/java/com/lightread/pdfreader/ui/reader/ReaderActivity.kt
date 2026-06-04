@@ -1,9 +1,14 @@
 package com.lightread.pdfreader.ui.reader
 
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
+import android.widget.Button
 import android.widget.TextView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -14,9 +19,11 @@ import com.lightread.pdfreader.data.model.ReadingProgress
 
 class ReaderActivity : FragmentActivity() {
     private lateinit var title: TextView
+    private lateinit var catalogButton: Button
     private lateinit var pageList: RecyclerView
     private lateinit var layoutManager: LinearLayoutManager
     private lateinit var adapter: ReaderPageAdapter
+    private lateinit var group: PdfGroupWithFiles
     private var groupId: String = ""
     private var pages: List<ReaderPage> = emptyList()
     private var pendingProgress: ReadingProgress? = null
@@ -25,19 +32,23 @@ class ReaderActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         AppGraph.init(applicationContext)
         groupId = intent.getStringExtra(EXTRA_GROUP_ID).orEmpty()
-        val group = AppGraph.store.getGroupWithFiles(groupId)
-        if (group == null || group.files.isEmpty()) {
+        val loadedGroup = AppGraph.store.getGroupWithFiles(groupId)
+        if (loadedGroup == null || loadedGroup.files.isEmpty()) {
             finish()
             return
         }
+        group = loadedGroup
 
         setContentView(R.layout.activity_reader)
+        applySystemBarInsets()
         title = findViewById(R.id.text_reader_title)
+        catalogButton = findViewById(R.id.button_reader_catalog)
         pageList = findViewById(R.id.list_reader_pages)
         layoutManager = LinearLayoutManager(this)
         adapter = ReaderPageAdapter(PdfPageRenderer(applicationContext))
         pageList.layoutManager = layoutManager
         pageList.adapter = adapter
+        catalogButton.setOnClickListener { showCatalog() }
 
         pages = buildPages(group)
         adapter.submitPages(pages)
@@ -95,6 +106,39 @@ class ReaderActivity : FragmentActivity() {
         }
     }
 
+    private fun showCatalog() {
+        val currentPdfId = pendingProgress?.currentPdfId
+            ?: pages.getOrNull(layoutManager.findFirstVisibleItemPosition())?.pdfFile?.id
+        val labels = group.files.mapIndexed { index, file ->
+            val prefix = if (file.id == currentPdfId) "[当前] " else ""
+            "$prefix${index + 1}. ${file.fileName}"
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("目录")
+            .setItems(labels) { dialog, index ->
+                jumpToPdf(group.files[index].id)
+                dialog.dismiss()
+            }
+            .setNegativeButton("关闭", null)
+            .show()
+    }
+
+    private fun jumpToPdf(pdfId: String) {
+        val pageIndex = pages.indexOfFirst { page -> page.pdfFile.id == pdfId && page.pageIndex == 0 }
+        if (pageIndex < 0) return
+        layoutManager.scrollToPositionWithOffset(pageIndex, 0)
+        val page = pages[pageIndex]
+        pendingProgress = ReadingProgress(
+            groupId = groupId,
+            currentPdfId = page.pdfFile.id,
+            currentPage = page.pageIndex,
+            pageScrollOffset = 0f,
+            updateTime = System.currentTimeMillis()
+        )
+        persistCurrentProgress()
+        title.text = "${page.pdfFile.fileName} · ${page.globalPageNumber}/${page.globalPageCount}"
+    }
+
     private fun updateCurrentProgress() {
         if (pages.isEmpty() || !::layoutManager.isInitialized) return
         val index = layoutManager.findFirstVisibleItemPosition().takeIf { it >= 0 } ?: return
@@ -117,6 +161,15 @@ class ReaderActivity : FragmentActivity() {
 
     private fun persistCurrentProgress() {
         pendingProgress?.let(AppGraph.store::saveProgress)
+    }
+
+    private fun applySystemBarInsets() {
+        val root = findViewById<View>(R.id.root_reader)
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(0, bars.top, 0, 0)
+            insets
+        }
     }
 
     companion object {

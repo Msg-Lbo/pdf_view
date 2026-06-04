@@ -6,8 +6,10 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -34,6 +36,15 @@ class LibraryFragment : Fragment() {
 
     private val requestReadStorage = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) scanMediaStore() else status.text = "未授予存储读取权限，可改用系统文件选择器添加 PDF。"
+    }
+
+    private val requestManageStorage = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
+            scanMediaStore()
+        } else {
+            status.text = "未授予完整文件访问权限，已改用 MediaStore 扫描；若仍扫不到，请使用“选择 PDF”。"
+            scanMediaStore()
+        }
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -63,19 +74,29 @@ class LibraryFragment : Fragment() {
     }
 
     private fun requestScan() {
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2 &&
-            requireContext().checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
-        ) {
-            requestReadStorage.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
-        } else {
-            scanMediaStore()
+        when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager() -> {
+                status.text = "自动扫描需要完整文件访问权限。授权后会扫描 Download、Documents、QQ/Tencent 接收目录。"
+                val appSettings = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                    data = Uri.parse("package:${requireContext().packageName}")
+                }
+                val fallbackSettings = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                requestManageStorage.launch(
+                    if (appSettings.resolveActivity(requireContext().packageManager) != null) appSettings else fallbackSettings
+                )
+            }
+            Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2 &&
+                requireContext().checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED -> {
+                requestReadStorage.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+            else -> scanMediaStore()
         }
     }
 
     private fun scanMediaStore() {
         status.text = "正在扫描本地 PDF..."
         ioExecutor.execute {
-            val files = AppGraph.scanner.scanMediaStore()
+            val files = AppGraph.scanner.scanDevicePdfs()
             val changed = AppGraph.store.upsertPdfFiles(files)
             mainHandler.post {
                 if (isAdded) refresh("扫描到 ${files.size} 个 PDF，新增或更新 $changed 个。")

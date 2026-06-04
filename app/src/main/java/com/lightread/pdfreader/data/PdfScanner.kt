@@ -6,13 +6,23 @@ import android.database.Cursor
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import com.lightread.pdfreader.data.model.PdfFile
+import java.io.File
 import java.security.MessageDigest
 
 class PdfScanner(private val context: Context) {
     private val resolver = context.contentResolver
+
+    fun scanDevicePdfs(): List<PdfFile> {
+        val files = scanMediaStore() + scanCommonDirectories()
+        return files
+            .distinctBy { file -> "${file.fileName.lowercase()}|${file.sizeBytes}|${file.pageCount}" }
+            .sortedNaturally()
+    }
 
     fun scanMediaStore(): List<PdfFile> {
         val collection = MediaStore.Files.getContentUri("external")
@@ -54,6 +64,34 @@ class PdfScanner(private val context: Context) {
         return files.sortedNaturally()
     }
 
+    private fun scanCommonDirectories(): List<PdfFile> {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) return emptyList()
+        val roots = listOf(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
+            File(Environment.getExternalStorageDirectory(), "Tencent/QQfile_recv"),
+            File(Environment.getExternalStorageDirectory(), "tencent/QQfile_recv"),
+            File(Environment.getExternalStorageDirectory(), "QQfile_recv")
+        )
+        return roots.asSequence()
+            .filter { root -> root.exists() && root.canRead() }
+            .flatMap { root -> root.walkTopDown().onEnter { directory -> directory.canRead() } }
+            .filter { file -> file.isFile && file.extension.equals("pdf", ignoreCase = true) }
+            .take(MAX_FILE_SCAN_COUNT)
+            .map { file ->
+                PdfFile(
+                    id = stableId(file.absolutePath, file.length()),
+                    fileName = file.name,
+                    filePath = Uri.fromFile(file).toString(),
+                    pageCount = readPageCount(file),
+                    addedTime = file.lastModified() / 1000L,
+                    sizeBytes = file.length()
+                )
+            }
+            .toList()
+            .sortedNaturally()
+    }
+
     fun scanPickedUris(uris: List<Uri>): List<PdfFile> {
         return uris.mapNotNull { uri ->
             val metadata = readOpenableMetadata(uri) ?: return@mapNotNull null
@@ -86,6 +124,16 @@ class PdfScanner(private val context: Context) {
             resolver.openFileDescriptor(uri, "r")?.use { descriptor ->
                 PdfRenderer(descriptor).use { renderer -> renderer.pageCount }
             } ?: 0
+        } catch (_: Exception) {
+            0
+        }
+    }
+
+    private fun readPageCount(file: File): Int {
+        return try {
+            ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+                PdfRenderer(descriptor).use { renderer -> renderer.pageCount }
+            }
         } catch (_: Exception) {
             0
         }
@@ -126,5 +174,9 @@ class PdfScanner(private val context: Context) {
 
     private fun List<PdfFile>.sortedNaturally(): List<PdfFile> {
         return sortedWith { left, right -> NaturalFileNameComparator.compare(left.fileName, right.fileName) }
+    }
+
+    private companion object {
+        const val MAX_FILE_SCAN_COUNT = 5000
     }
 }

@@ -6,7 +6,9 @@ import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
+import android.os.ParcelFileDescriptor
 import com.lightread.pdfreader.data.model.PdfFile
+import java.io.File
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -15,7 +17,7 @@ class PdfPageRenderer(private val context: Context) {
         if (targetWidth <= 0) return null
         val uri = Uri.parse(file.filePath)
         return try {
-            context.contentResolver.openFileDescriptor(uri, "r")?.use { descriptor ->
+            openDescriptor(uri)?.use { descriptor ->
                 PdfRenderer(descriptor).use { renderer ->
                     if (pageIndex !in 0 until renderer.pageCount) return null
                     renderer.openPage(pageIndex).use { page ->
@@ -30,6 +32,14 @@ class PdfPageRenderer(private val context: Context) {
             }
         } catch (_: Exception) {
             null
+        }
+    }
+
+    private fun openDescriptor(uri: Uri): ParcelFileDescriptor? {
+        return if (uri.scheme == "file") {
+            ParcelFileDescriptor.open(File(uri.path.orEmpty()), ParcelFileDescriptor.MODE_READ_ONLY)
+        } else {
+            context.contentResolver.openFileDescriptor(uri, "r")
         }
     }
 }

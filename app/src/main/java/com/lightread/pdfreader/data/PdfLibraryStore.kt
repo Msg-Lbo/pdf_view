@@ -81,6 +81,41 @@ class PdfLibraryStore(private val context: Context) {
     }
 
     @Synchronized
+    fun updateGroup(groupId: String, title: String, pdfIds: List<String>): Boolean {
+        val current = groups[groupId] ?: return false
+        val cleanTitle = title.trim()
+        val selectedFiles = pdfIds.mapNotNull { pdfId -> pdfFiles[pdfId] }
+        if (cleanTitle.isBlank() || selectedFiles.isEmpty()) return false
+
+        groups[groupId] = current.copy(title = cleanTitle)
+        refs.removeAll { ref -> ref.groupId == groupId }
+        val now = System.currentTimeMillis()
+        selectedFiles.forEachIndexed { index, file ->
+            refs += GroupPdfCrossRef(
+                crossId = now + index,
+                groupId = groupId,
+                pdfId = file.id,
+                sortOrder = index
+            )
+        }
+        val progress = progressByGroup[groupId]
+        if (progress != null && selectedFiles.none { file -> file.id == progress.currentPdfId }) {
+            progressByGroup.remove(groupId)
+        }
+        save()
+        return true
+    }
+
+    @Synchronized
+    fun deleteGroup(groupId: String): Boolean {
+        val removed = groups.remove(groupId) ?: return false
+        refs.removeAll { ref -> ref.groupId == removed.groupId }
+        progressByGroup.remove(removed.groupId)
+        save()
+        return true
+    }
+
+    @Synchronized
     fun saveProgress(progress: ReadingProgress) {
         progressByGroup[progress.groupId] = progress
         save()
