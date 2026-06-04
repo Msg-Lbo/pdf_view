@@ -1,24 +1,40 @@
 # 轻阅 · PDF 分组阅读器
 
-Android-first local PDF group reader based on `1.md`.
+轻阅是一个 Android 本地 PDF 分组阅读器，面向需要连续阅读多份 PDF 的场景。应用重点解决散乱 PDF 的导入、分组、排序、续读和跨文件连续阅读问题。
 
-Current implementation status:
+## 主要功能
 
-- Native Android Kotlin project using Fragment/XML UI.
-- Two top-level tabs: file library and groups.
-- Local PDF import through MediaStore scan and SAF multi-document picker.
-- Natural filename ordering for group creation.
-- Continuous vertical reader backed by Android `PdfRenderer`, rendering visible RecyclerView pages and recycling bitmaps.
-- Reading progress is stored locally at `groupId + currentPdfId + currentPage + pageScrollOffset` granularity.
+- 本地 PDF 文件库：支持自动扫描设备 PDF，也支持系统文件选择器手动导入。
+- PDF 分组：可把多份 PDF 组成一个阅读分组，支持编辑分组名称、调整分组内容和删除分组。
+- 自然排序：创建分组时按文件名自然排序，例如 `1.pdf, 2.pdf, 10.pdf`。
+- 连续阅读：阅读器将分组内多个 PDF 串成一个竖向连续页面流。
+- 阅读进度：按分组保存当前 PDF、页码和页内滚动位置，重新打开后继续阅读。
+- 目录跳转：阅读器内可打开目录，直接跳转到分组内任意 PDF。
+- 在线更新：启动时和关于页可检查 GitHub Releases，新版本可直接打开 APK 下载链接。
 
-Build note:
+## 页面结构
 
-- A Gradle Wrapper is not committed yet because this environment has no global `gradle` command to generate it.
-- Open the project in Android Studio, or add a wrapper with a local Gradle install before using command-line builds.
-- Resource compilation was checked with SDK `aapt2`; full Kotlin/Android compilation still needs Gradle.
+- 文件库：扫描、导入 PDF，并选择 PDF 创建分组。
+- 分组：查看已有分组，进入阅读器，编辑或删除分组。
+- 关于：查看当前版本，手动检查更新。
 
-Release note:
+## 技术实现
 
-- Push a tag like `v0.1.0` to trigger GitHub Actions.
-- The workflow builds `:app:assembleRelease`, creates a GitHub Release, and uploads `qingyue-<tag>.apk` plus a SHA-256 checksum.
-- Optional signing secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
+- 原生 Android Kotlin。
+- Fragment/XML UI。
+- `PdfRenderer` 渲染 PDF 页面。
+- RecyclerView 承载连续阅读页面流。
+- 本地 JSON 文件保存文件库、分组和阅读进度。
+- `HttpURLConnection` 检查 GitHub Releases，不依赖 Retrofit/OkHttp。
+
+## 构建
+
+- 当前仓库还没有提交 Gradle Wrapper，因为本环境没有全局 `gradle` 命令生成 Wrapper。
+- 可用 Android Studio 打开项目构建，或先用本地 Gradle 添加 Wrapper 后再使用命令行构建。
+- 已用 Android SDK 的 `aapt2` 验证资源编译；完整 Kotlin/Android 编译仍需要 Gradle。
+
+## 发布
+
+- 推送 `v*` 格式的 tag 会触发 GitHub Actions。
+- 工作流会执行 `:app:assembleRelease`，创建 GitHub Release，并上传 `qingyue-<tag>.apk` 与 SHA-256 校验文件。
+- 可选正式签名密钥：`ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。

@@ -39,5 +39,14 @@
             android:gravity="center"
             android:text="@string/tab_groups"
             android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/tab_about"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="@string/tab_about"
+            android:textSize="16sp" />
     </LinearLayout>
 </LinearLayout>
