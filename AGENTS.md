@@ -3,8 +3,9 @@
 ## Repository State
 
 - `1.md` is the Chinese product requirements document; the Android app skeleton lives under `app/`.
-- A Gradle Wrapper is not committed yet. Do not tell users to run `./gradlew` until wrapper files exist; use Android Studio or a local Gradle install.
-- No CI, lockfile, lint config, test config, or generated-code setup exists yet.
+- A Gradle Wrapper is not committed yet. Do not tell users to run `./gradlew` until wrapper files exist; use Android Studio, a local Gradle install, or the GitHub Actions workflow.
+- CI exists at `.github/workflows/release.yml`; pushing a `v*` tag builds `:app:assembleRelease`, creates a GitHub Release, and uploads the APK.
+- No lockfile, lint config, test config, or generated-code setup exists yet.
 
 ## Product Constraints From `1.md`
 

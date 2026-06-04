@@ -16,3 +16,9 @@ Build note:
 - A Gradle Wrapper is not committed yet because this environment has no global `gradle` command to generate it.
 - Open the project in Android Studio, or add a wrapper with a local Gradle install before using command-line builds.
 - Resource compilation was checked with SDK `aapt2`; full Kotlin/Android compilation still needs Gradle.
+
+Release note:
+
+- Push a tag like `v0.1.0` to trigger GitHub Actions.
+- The workflow builds `:app:assembleRelease`, creates a GitHub Release, and uploads `qingyue-<tag>.apk` plus a SHA-256 checksum.
+- Optional signing secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.

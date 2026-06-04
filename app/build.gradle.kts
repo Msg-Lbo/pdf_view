@@ -3,6 +3,11 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val releaseKeystoreFile = file("release.keystore")
+val hasReleaseSigning = releaseKeystoreFile.exists() &&
+    !providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull.isNullOrBlank() &&
+    !providers.environmentVariable("ANDROID_KEY_ALIAS").orNull.isNullOrBlank()
+
 android {
     namespace = "com.lightread.pdfreader"
     compileSdk = 35
@@ -28,6 +33,18 @@ android {
         jvmTarget = "17"
     }
 
+    signingConfigs {
+        create("release") {
+            if (hasReleaseSigning) {
+                storeFile = releaseKeystoreFile
+                storePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull
+                keyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
+                keyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
+                    ?: providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
@@ -36,6 +53,11 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

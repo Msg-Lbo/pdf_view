@@ -53,20 +53,21 @@ class ReaderPageAdapter(
 
         holder.image.post {
             val width = holder.image.width.takeIf { it > 0 } ?: holder.itemView.width
-            if (width <= 0 || holder.boundKey != key) return@post
-            renderExecutor.execute {
-                val bitmap = renderer.render(page.pdfFile, page.pageIndex, width)
-                mainHandler.post {
-                    if (holder.boundKey != key) {
-                        bitmap?.recycle()
-                        return@post
-                    }
-                    if (bitmap == null) {
-                        holder.error.text = "页面渲染失败"
-                        holder.error.visibility = View.VISIBLE
-                    } else {
-                        holder.error.visibility = View.GONE
-                        holder.image.setImageBitmap(bitmap)
+            if (width > 0 && holder.boundKey == key) {
+                renderExecutor.execute {
+                    val bitmap = renderer.render(page.pdfFile, page.pageIndex, width)
+                    mainHandler.post renderResult@{
+                        if (holder.boundKey != key) {
+                            bitmap?.recycle()
+                            return@renderResult
+                        }
+                        if (bitmap == null) {
+                            holder.error.text = "页面渲染失败"
+                            holder.error.visibility = View.VISIBLE
+                        } else {
+                            holder.error.visibility = View.GONE
+                            holder.image.setImageBitmap(bitmap)
+                        }
                     }
                 }
             }
