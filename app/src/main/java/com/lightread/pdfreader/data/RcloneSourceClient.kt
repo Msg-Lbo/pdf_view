@@ -39,9 +39,10 @@ class RcloneSourceClient(private val context: Context) {
         sourceUrl: String,
         directoryUrl: String,
         groupName: String,
+        albumOnly: Boolean = false,
         onProgress: (DownloadProgress) -> Unit = {}
     ): DownloadResult {
-        val pdfEntries = collectPdfEntries(directoryUrl.ensureSlash(), depth = 0)
+        val pdfEntries = if (albumOnly) collectAlbumEntries(directoryUrl.ensureSlash()) else collectPdfEntries(directoryUrl.ensureSlash(), depth = 0)
         onProgress(DownloadProgress(totalFiles = pdfEntries.size, completedFiles = 0, currentFileName = null))
         val files = pdfEntries.mapIndexedNotNull { index, entry ->
             onProgress(DownloadProgress(pdfEntries.size, index, entry.name))
@@ -51,10 +52,21 @@ class RcloneSourceClient(private val context: Context) {
                     onProgress(DownloadProgress(pdfEntries.size, index + 1, entry.name))
                 }
         }
-        if (pdfEntries.isNotEmpty() && files.isEmpty()) {
+        if (pdfEntries.isEmpty()) {
+            error(if (albumOnly) "当前目录没有 album_ 开头的整本 PDF。" else "当前目录及子目录没有 PDF。")
+        }
+        if (files.isEmpty()) {
             error("找到 ${pdfEntries.size} 个 PDF，但下载失败。请检查网络或远端源是否允许直连文件。")
         }
         return DownloadResult(groupName = groupName, files = files)
+    }
+
+    fun hasAlbumPdf(directoryUrl: String): Boolean {
+        return collectAlbumEntries(directoryUrl.ensureSlash()).isNotEmpty()
+    }
+
+    private fun collectAlbumEntries(url: String): List<RemoteEntry> {
+        return list(url).filter { entry -> isAlbumPdf(entry) }
     }
 
     private fun collectPdfEntries(url: String, depth: Int): List<RemoteEntry> {
@@ -143,6 +155,10 @@ class RcloneSourceClient(private val context: Context) {
     }
 
     private fun String.ensureSlash(): String = if (endsWith('/')) this else "$this/"
+
+    private fun isAlbumPdf(entry: RemoteEntry): Boolean {
+        return !entry.directory && entry.name.startsWith("album_", ignoreCase = true) && entry.name.endsWith(".pdf", ignoreCase = true)
+    }
 
     private fun String.isNavigationLink(): Boolean {
         val clean = trim()

@@ -17,8 +17,8 @@ android {
         applicationId = "com.lightread.pdfreader"
         minSdk = 23
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.2.4"
+        versionCode = 9
+        versionName = "0.2.5"
     }
 
     buildFeatures {

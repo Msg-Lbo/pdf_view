@@ -101,6 +101,15 @@
                 android:textColor="#FFFFFF"
                 android:textStyle="bold" />
         </LinearLayout>
+
+        <CheckBox
+            android:id="@+id/check_remote_album_only"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="只下载整本 PDF（album_ 开头）"
+            android:textColor="#24406F"
+            android:textSize="13sp" />
     </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView

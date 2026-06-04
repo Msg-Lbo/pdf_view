@@ -70,16 +70,24 @@ class MainActivity : FragmentActivity() {
 
     private fun showTab(tab: Tab) {
         currentTab = tab
-        val fragment: Fragment = when (tab) {
+        val transaction = supportFragmentManager.beginTransaction()
+        Tab.values().forEach { existingTab ->
+            supportFragmentManager.findFragmentByTag(existingTab.name)?.let { fragment -> transaction.hide(fragment) }
+        }
+        val fragment = supportFragmentManager.findFragmentByTag(tab.name) ?: createFragment(tab).also { newFragment ->
+            transaction.add(R.id.fragment_container, newFragment, tab.name)
+        }
+        transaction.show(fragment).commit()
+        updateTabState(tab)
+    }
+
+    private fun createFragment(tab: Tab): Fragment {
+        return when (tab) {
             Tab.Library -> LibraryFragment()
             Tab.Groups -> GroupsFragment()
             Tab.Remote -> RemoteSourcesFragment()
             Tab.About -> AboutFragment()
         }
-        supportFragmentManager.beginTransaction()
-            .replace(R.id.fragment_container, fragment)
-            .commit()
-        updateTabState(tab)
     }
 
     private fun updateTabState(selectedTab: Tab) {

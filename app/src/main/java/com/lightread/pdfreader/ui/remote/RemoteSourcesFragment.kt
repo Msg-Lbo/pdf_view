@@ -10,6 +10,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -28,6 +29,7 @@ import java.util.concurrent.Executors
 class RemoteSourcesFragment : Fragment() {
     private lateinit var title: TextView
     private lateinit var status: TextView
+    private lateinit var albumOnlyCheck: CheckBox
     private lateinit var adapter: RemoteEntryAdapter
     private val mainHandler = Handler(Looper.getMainLooper())
     private val ioExecutor: ExecutorService = Executors.newSingleThreadExecutor()
@@ -38,6 +40,7 @@ class RemoteSourcesFragment : Fragment() {
         val view = inflater.inflate(R.layout.fragment_remote_sources, container, false)
         title = view.findViewById(R.id.text_remote_page_title)
         status = view.findViewById(R.id.text_remote_page_status)
+        albumOnlyCheck = view.findViewById(R.id.check_remote_album_only)
         adapter = RemoteEntryAdapter { entry -> openEntry(entry) }
 
         view.findViewById<RecyclerView>(R.id.list_remote_page_entries).apply {
@@ -52,7 +55,7 @@ class RemoteSourcesFragment : Fragment() {
         view.findViewById<Button>(R.id.button_remote_page_download).setOnClickListener {
             val source = currentSource ?: return@setOnClickListener
             val url = currentUrl ?: return@setOnClickListener
-            downloadDirectory(source, url, directoryNameFromUrl(url).ifBlank { source.name })
+            downloadDirectory(source, url, directoryNameFromUrl(url).ifBlank { source.name }, albumOnlyCheck.isChecked)
         }
 
         openDefaultSource()
@@ -126,6 +129,9 @@ class RemoteSourcesFragment : Fragment() {
         currentUrl = url
         title.text = "${source.name} / ${shortPath(source, url)}"
         status.text = "正在读取：$url"
+        albumOnlyCheck.isChecked = false
+        albumOnlyCheck.isEnabled = false
+        albumOnlyCheck.text = "只下载整本 PDF（检测中）"
         adapter.submitEntries(emptyList())
         ioExecutor.execute {
             val result = runCatching { AppGraph.rcloneClient.list(url) }
@@ -147,6 +153,14 @@ class RemoteSourcesFragment : Fragment() {
         }
         val directoryCount = visibleEntries.count { entry -> entry.directory }
         val pdfCount = visibleEntries.size - directoryCount
+        val hasAlbumPdf = visibleEntries.any { entry -> isAlbumPdf(entry) }
+        albumOnlyCheck.isEnabled = hasAlbumPdf
+        albumOnlyCheck.isChecked = hasAlbumPdf
+        albumOnlyCheck.text = if (hasAlbumPdf) {
+            "只下载整本 PDF（album_ 开头，已找到）"
+        } else {
+            "只下载整本 PDF（当前目录没有 album_，分章节目录不可用）"
+        }
         status.text = "当前目录：$url\n$directoryCount 个子目录，$pdfCount 个 PDF。"
         adapter.submitEntries(visibleEntries)
     }
@@ -156,14 +170,14 @@ class RemoteSourcesFragment : Fragment() {
         if (entry.directory) {
             browseSource(source, entry.url)
         } else {
-            downloadDirectory(source, parentUrl(entry.url), entry.name.removeSuffix(".pdf").removeSuffix(".PDF"))
+            downloadDirectory(source, parentUrl(entry.url), entry.name.removeSuffix(".pdf").removeSuffix(".PDF"), albumOnly = false)
         }
     }
 
-    private fun downloadDirectory(source: RemoteSource, directoryUrl: String, groupName: String) {
+    private fun downloadDirectory(source: RemoteSource, directoryUrl: String, groupName: String, albumOnly: Boolean) {
         val progressDialog = ProgressDialog(requireContext()).apply {
             setTitle("正在下载 PDF")
-            setMessage("准备下载：$groupName")
+            setMessage(if (albumOnly) "准备下载整本：$groupName" else "准备递归下载：$groupName")
             setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
             isIndeterminate = true
             setCancelable(false)
@@ -172,7 +186,7 @@ class RemoteSourcesFragment : Fragment() {
         }
         ioExecutor.execute {
             val result = runCatching {
-                AppGraph.rcloneClient.downloadDirectory(source.baseUrl, directoryUrl, groupName) { progress ->
+                AppGraph.rcloneClient.downloadDirectory(source.baseUrl, directoryUrl, groupName, albumOnly) { progress ->
                     mainHandler.post progressUpdate@{
                         if (!isAdded) return@progressUpdate
                         val total = progress.totalFiles
@@ -215,6 +229,10 @@ class RemoteSourcesFragment : Fragment() {
 
     private fun decodePath(value: String): String {
         return runCatching { URLDecoder.decode(value, "UTF-8") }.getOrElse { value }
+    }
+
+    private fun isAlbumPdf(entry: RemoteEntry): Boolean {
+        return !entry.directory && entry.name.startsWith("album_", ignoreCase = true) && entry.name.endsWith(".pdf", ignoreCase = true)
     }
 
     private companion object {

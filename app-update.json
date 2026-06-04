@@ -1,8 +1,8 @@
 {
-  "versionName": "0.2.4",
-  "versionCode": 8,
-  "tagName": "v0.2.4",
-  "apkUrl": "https://github.com/Msg-Lbo/pdf_view/releases/download/v0.2.4/qingyue-v0.2.4.apk",
-  "releaseUrl": "https://github.com/Msg-Lbo/pdf_view/releases/tag/v0.2.4",
-  "body": "新增独立远端源 tab，远端目录和下载操作不再被文件库列表遮挡。"
+  "versionName": "0.2.5",
+  "versionCode": 9,
+  "tagName": "v0.2.5",
+  "apkUrl": "https://github.com/Msg-Lbo/pdf_view/releases/download/v0.2.5/qingyue-v0.2.5.apk",
+  "releaseUrl": "https://github.com/Msg-Lbo/pdf_view/releases/tag/v0.2.5",
+  "body": "远端源支持只下载 album_ 整本 PDF，切换 tab 时保留当前目录位置。"
 }
