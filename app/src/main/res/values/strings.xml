@@ -3,6 +3,7 @@
     <string name="app_name">轻阅</string>
     <string name="tab_library">文件库</string>
     <string name="tab_groups">分组</string>
+    <string name="tab_remote">源</string>
     <string name="tab_about">关于</string>
     <string name="scan_local_pdf">扫描本地 PDF</string>
     <string name="source_settings">源设置</string>

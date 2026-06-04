@@ -1,8 +1,8 @@
 {
-  "versionName": "0.2.3",
-  "versionCode": 7,
-  "tagName": "v0.2.3",
-  "apkUrl": "https://github.com/Msg-Lbo/pdf_view/releases/download/v0.2.3/qingyue-v0.2.3.apk",
-  "releaseUrl": "https://github.com/Msg-Lbo/pdf_view/releases/tag/v0.2.3",
-  "body": "远端源改为页面内浏览面板，显示当前 URL、目录/PDF 数量和读取错误。"
+  "versionName": "0.2.4",
+  "versionCode": 8,
+  "tagName": "v0.2.4",
+  "apkUrl": "https://github.com/Msg-Lbo/pdf_view/releases/download/v0.2.4/qingyue-v0.2.4.apk",
+  "releaseUrl": "https://github.com/Msg-Lbo/pdf_view/releases/tag/v0.2.4",
+  "body": "新增独立远端源 tab，远端目录和下载操作不再被文件库列表遮挡。"
 }

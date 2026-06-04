@@ -19,12 +19,14 @@ import com.lightread.pdfreader.data.UpdateResult
 import com.lightread.pdfreader.ui.about.AboutFragment
 import com.lightread.pdfreader.ui.groups.GroupsFragment
 import com.lightread.pdfreader.ui.library.LibraryFragment
+import com.lightread.pdfreader.ui.remote.RemoteSourcesFragment
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 class MainActivity : FragmentActivity() {
     private lateinit var libraryTab: TextView
     private lateinit var groupsTab: TextView
+    private lateinit var remoteTab: TextView
     private lateinit var aboutTab: TextView
     private val mainHandler = Handler(Looper.getMainLooper())
     private val updateExecutor: ExecutorService = Executors.newSingleThreadExecutor()
@@ -40,10 +42,12 @@ class MainActivity : FragmentActivity() {
 
         libraryTab = findViewById(R.id.tab_library)
         groupsTab = findViewById(R.id.tab_groups)
+        remoteTab = findViewById(R.id.tab_remote)
         aboutTab = findViewById(R.id.tab_about)
 
         libraryTab.setOnClickListener { showTab(Tab.Library) }
         groupsTab.setOnClickListener { showTab(Tab.Groups) }
+        remoteTab.setOnClickListener { showTab(Tab.Remote) }
         aboutTab.setOnClickListener { showTab(Tab.About) }
 
         if (savedInstanceState == null) {
@@ -69,6 +73,7 @@ class MainActivity : FragmentActivity() {
         val fragment: Fragment = when (tab) {
             Tab.Library -> LibraryFragment()
             Tab.Groups -> GroupsFragment()
+            Tab.Remote -> RemoteSourcesFragment()
             Tab.About -> AboutFragment()
         }
         supportFragmentManager.beginTransaction()
@@ -80,9 +85,11 @@ class MainActivity : FragmentActivity() {
     private fun updateTabState(selectedTab: Tab) {
         libraryTab.setTextColor(if (selectedTab == Tab.Library) 0xFF111111.toInt() else 0xFF777777.toInt())
         groupsTab.setTextColor(if (selectedTab == Tab.Groups) 0xFF111111.toInt() else 0xFF777777.toInt())
+        remoteTab.setTextColor(if (selectedTab == Tab.Remote) 0xFF111111.toInt() else 0xFF777777.toInt())
         aboutTab.setTextColor(if (selectedTab == Tab.About) 0xFF111111.toInt() else 0xFF777777.toInt())
         libraryTab.setTypeface(null, if (selectedTab == Tab.Library) Typeface.BOLD else Typeface.NORMAL)
         groupsTab.setTypeface(null, if (selectedTab == Tab.Groups) Typeface.BOLD else Typeface.NORMAL)
+        remoteTab.setTypeface(null, if (selectedTab == Tab.Remote) Typeface.BOLD else Typeface.NORMAL)
         aboutTab.setTypeface(null, if (selectedTab == Tab.About) Typeface.BOLD else Typeface.NORMAL)
     }
 
@@ -166,6 +173,7 @@ class MainActivity : FragmentActivity() {
     private enum class Tab {
         Library,
         Groups,
+        Remote,
         About
     }
 
